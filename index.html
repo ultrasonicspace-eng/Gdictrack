@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>GDIC Logistics Tracking</title>
+
+    <link rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, Helvetica, sans-serif;
+        }
+
+        body {
+            background: #b30000;
+            color: #fff;
+        }
+
+        .container {
+            max-width: 950px;
+            margin: auto;
+            padding: 20px;
+        }
+
+        .logo {
+            text-align: center;
+            font-size: 38px;
+            font-weight: bold;
+            letter-spacing: 3px;
+            margin: 20px 0;
+        }
+
+        .card {
+            background: rgba(0, 0, 0, .25);
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, .4);
+        }
+
+        input {
+            width: 100%;
+            padding: 13px;
+            border: none;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-size: 16px;
+        }
+
+        button {
+            width: 100%;
+            padding: 13px;
+            margin-top: 12px;
+            border: none;
+            border-radius: 8px;
+            background: black;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #222;
+        }
+
+        .loader {
+            display: none;
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .bar {
+            height: 8px;
+            background: rgba(255, 255, 255, .2);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .bar span {
+            display: block;
+            height: 100%;
+            width: 0%;
+            background: white;
+            transition: 2s linear;
+        }
+
+        .result {
+            display: none;
+            margin-top: 20px;
+            background: rgba(0, 0, 0, .25);
+            padding: 20px;
+            border-radius: 12px;
+        }
+
+        .line {
+            opacity: 0;
+            transform: translateY(10px);
+            transition: .4s;
+            margin: 10px 0;
+        }
+
+        .line.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .blink {
+            background: red;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-weight: bold;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: .3;
+            }
+
+            100% {
+                opacity: 1;
+            }
+        }
+
+        #map {
+            height: 360px;
+            margin-top: 20px;
+            border-radius: 10px;
+        }
+
+        .footer {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 13px;
+            opacity: .8;
+        }
+
+        .route {
+            stroke-dasharray: 10 10;
+            animation: dash 1.5s linear infinite;
+        }
+
+        @keyframes dash {
+            to {
+                stroke-dashoffset: -20;
+            }
+        }
+
+        .timeline {
+            margin-top: 20px;
+            padding-left: 20px;
+            border-left: 3px solid white;
+        }
+
+        .timeline div {
+            margin-bottom: 18px;
+        }
+
+        .timeline span {
+            display: inline-block;
+            background: white;
+            color: #b30000;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+
+        <div class="logo">GDIC LOGISTICS</div>
+
+        <div class="card">
+
+            <h2>Track Your Shipment</h2>
+
+            <input id="tracking"
+                placeholder="Enter Tracking Number">
+
+            <button onclick="trackShipment()">
+                TRACK SHIPMENT
+            </button>
+
+            <div class="loader" id="loader">
+                Processing Shipment...
+
+                <div class="bar">
+                    <span id="progress"></span>
+                </div>
+            </div>
+
+            <div class="result" id="result">
+
+                <h2>Shipment Information</h2>
+
+                <div id="details"></div>
+
+                <h2 style="margin-top:25px;">
+                    Shipment Timeline
+                </h2>
+
+                <div class="timeline">
+
+                    <div>
+                        <span>✓</span>
+                        Shipment received in United States
+                    </div>
+
+                    <div>
+                        <span>✓</span>
+                        Departed United States
+                    </div>
+
+                    <div>
+                        <span>✓</span>
+                        in transit
+                    </div>
+
+                    <div>
+                        <span>✓</span>
+                        Processing
+                    </div>
+
+                    <div>
+                        <span>⏳</span>
+                        Expected Delivery: Gaborone, Botswana
+                    </div>
+
+                </div>
+
+                <h2 style="margin-top:25px;">
+                    Shipment Route
+                </h2>
+
+                <div id="map"></div>
+
+            </div>
+
+            <div class="footer">
+                GDIC Logistics Tracking System
+            </div>
+
+        </div>
+
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+
+        /* ==============================
+           TRACKING NUMBER
+        ============================== */
+
+        const TRACK_NUMBER = "GDIC-78456532";
+
+
+        /* ==============================
+           SHIPMENT DETAILS
+        ============================== */
+
+        const shipmentDetails = [
+
+            "<b>Status:</b> <span class='blink'>IN TRANSIT</span>",
+
+            "<b>Sender Name:</b> Peter Sanchez",
+
+            "<b>Origin:</b> United States",
+
+            "<b>Transit Hub:</b>  Morocco",
+
+            "<b>Destination:</b> Botswana",
+
+            "<b>Shipment Type:</b> International Express",
+
+            "<b>Weight:</b> 50g",
+
+            "<b>Quantity:</b> 1 Parcel",
+
+            "<hr>",
+
+            "<b>Receiver Name:</b> Matswe Kgosi phiri",
+
+            "<b>Address:</b><br>" +
+            "Plot No 1927 Bontleng Extension 8 Gaborone<br>" +
+            "Botswana",
+
+            "<b>Country:</b> Botswana 🇧🇼",
+
+            "<b>Phone:</b> +267 71 26222"
+
+        ];
+
+
+        /* ==============================
+           TRACK SHIPMENT
+        ============================== */
+
+        function trackShipment() {
+
+            const input = document
+                .getElementById("tracking")
+                .value
+                .trim()
+                .toUpperCase();
+
+            const loader =
+                document.getElementById("loader");
+
+            const progress =
+                document.getElementById("progress");
+
+            const result =
+                document.getElementById("result");
+
+            const details =
+                document.getElementById("details");
+
+
+            details.innerHTML = "";
+
+            result.style.display = "none";
+
+            loader.style.display = "block";
+
+            progress.style.width = "0%";
+
+
+            setTimeout(() => {
+
+                progress.style.width = "100%";
+
+            }, 50);
+
+
+            setTimeout(() => {
+
+                loader.style.display = "none";
+
+
+                if (input !== TRACK_NUMBER) {
+
+                    alert("Invalid Tracking Number");
+
+                    return;
+
+                }
+
+
+                result.style.display = "block";
+
+
+                let delay = 0;
+
+
+                shipmentDetails.forEach(item => {
+
+                    setTimeout(() => {
+
+                        const div =
+                            document.createElement("div");
+
+                        div.className = "line";
+
+                        div.innerHTML = item;
+
+                        details.appendChild(div);
+
+
+                        setTimeout(() => {
+
+                            div.classList.add("show");
+
+                        }, 20);
+
+                    }, delay);
+
+
+                    delay += 300;
+
+                });
+
+
+                setTimeout(createMap, delay);
+
+            }, 2000);
+
+        }
+
+
+        /* ==============================
+           CREATE MAP
+        ============================== */
+
+        function createMap() {
+
+            const map =
+                L.map("map").setView([5, 10], 3);
+
+
+            L.tileLayer(
+                "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+                {
+                    attribution: "© OpenStreetMap"
+                }
+            ).addTo(map);
+
+
+            /* USA */
+
+            const usa = [
+                40.7128,
+                -74.0060
+            ];
+
+
+            /* MOROCCO */
+
+            const morocco = [
+                33.5731,
+                -7.5898
+            ];
+
+
+            /* SOUTH AFRICA */
+
+            const southAfrica = [
+                -30.5595,
+                22.9375
+            ];
+
+
+            /* MOLEPOLOLE, BOTSWANA */
+
+            const botswana = [
+                -24.4066,
+                25.4951
+            ];
+
+
+            /* ==============================
+               MARKERS
+            ============================== */
+
+            L.marker(usa)
+                .addTo(map)
+                .bindPopup(
+                    "<b>Origin</b><br>United States"
+                );
+
+
+            L.marker(morocco)
+                .addTo(map)
+                .bindPopup(
+                    "<b>Transit Hub</b><br>Morocco"
+                );
+
+
+            L.marker(southAfrica)
+                .addTo(map)
+                .bindPopup(
+                    "<b>Transit Point</b><br>South Africa"
+                );
+
+
+            L.marker(botswana)
+                .addTo(map)
+                .bindPopup(
+                    "<b>Destination</b><br>" +
+                    "Plot No 31277 Molepolole<br>" +
+                    "Botswana"
+                );
+
+
+            /* ==============================
+               ROUTE
+            ============================== */
+
+            const routePoints = [
+
+                usa,
+
+                morocco,
+
+                southAfrica,
+
+                botswana
+
+            ];
+
+
+            const route =
+                L.polyline(
+                    routePoints,
+                    {
+                        color: "red",
+                        weight: 5,
+                        className: "route"
+                    }
+                ).addTo(map);
+
+
+            /* ==============================
+               ROUTE DOTS
+            ============================== */
+
+            routePoints.forEach((point, index) => {
+
+                L.circleMarker(point, {
+
+                    radius: 8,
+
+                    color: "#ffffff",
+
+                    fillColor: "#ff0000",
+
+                    fillOpacity: 1
+
+                })
+                .addTo(map);
+
+            });
+
+
+            /* ==============================
+               FIT MAP TO ROUTE
+            ============================== */
+
+            map.fitBounds(
+                route.getBounds(),
+                {
+                    padding: [30, 30]
+                }
+            );
+
+
+            /* ==============================
+               MOVING TRACKING MARKER
+            ============================== */
+
+            const planeIcon =
+                L.divIcon({
+
+                    className: "moving-plane",
+
+                    html: `
+                        <div style="
+                            font-size: 28px;
+                            text-shadow:
+                            0 0 3px white;
+                        ">✈️</div>
+                    `,
+
+                    iconSize: [
+                        30,
+                        30
+                    ],
+
+                    iconAnchor: [
+                        15,
+                        15
+                    ]
+
+                });
+
+
+            const plane =
+                L.marker(
+                    routePoints[0],
+                    {
+                        icon: planeIcon
+                    }
+                ).addTo(map);
+
+
+            /* ==============================
+               SMOOTH ROUTE ANIMATION
+            ============================== */
+
+            let segment = 0;
+
+            let progress = 0;
+
+            const speed = 0.005;
+
+
+            function animatePlane() {
+
+                if (
+                    segment >=
+                    routePoints.length - 1
+                ) {
+
+                    segment = 0;
+
+                    progress = 0;
+
+                    plane.setLatLng(
+                        routePoints[0]
+                    );
+
+                }
+
+
+                const start =
+                    routePoints[segment];
+
+                const end =
+                    routePoints[segment + 1];
+
+
+                progress += speed;
+
+
+                if (progress >= 1) {
+
+                    progress = 0;
+
+                    segment++;
+
+                }
+
+
+                const lat =
+                    start[0] +
+                    (end[0] - start[0])
+                    * progress;
+
+
+                const lng =
+                    start[1] +
+                    (end[1] - start[1])
+                    * progress;
+
+
+                plane.setLatLng([
+                    lat,
+                    lng
+                ]);
+
+
+                requestAnimationFrame(
+                    animatePlane
+                );
+
+            }
+
+
+            animatePlane();
+
+        }
+
+
+        /* ==============================
+           PAGE SETUP
+        ============================== */
+
+        window.onload = function () {
+
+            document
+                .getElementById("tracking")
+                .focus();
+
+        };
+
+
+        document
+            .getElementById("tracking")
+            .addEventListener(
+                "keypress",
+                function (e) {
+
+                    if (e.key === "Enter") {
+
+                        trackShipment();
+
+                    }
+
+                }
+            );
+
+
+        console.log(
+            "GDIC Logistics Tracking System Loaded Successfully."
+        );
+
+    </script>
+
+</body>
+
+</html>
